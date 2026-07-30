@@ -242,19 +242,11 @@ function TextToSign() {
               placeholder="Type anything you want to sign..."
               className="mt-2 resize-none text-base"
             />
-            <div className="mt-4 flex flex-wrap gap-2">
-              {loading && <span className="text-xs text-muted-foreground animate-pulse">Translating to ISL grammar...</span>}
-              {!loading && translatedSequence.length === 0 && <span className="text-xs text-muted-foreground">Type a sentence to display signs...</span>}
-              {!loading && translatedSequence.map((w, i) => (
-                <Badge
-                  key={`${w}-${i}`}
-                  variant={i === activeWord && playing ? "default" : "secondary"}
-                  className={i === activeWord && playing ? "gradient-primary text-primary-foreground animate-pulse" : ""}
-                >
-                  {w}
-                </Badge>
-              ))}
-            </div>
+            {loading && (
+              <div className="mt-4">
+                <span className="text-xs text-muted-foreground animate-pulse">Translating to ISL grammar...</span>
+              </div>
+            )}
           </div>
 
           <div className="rounded-3xl border bg-card p-5 shadow-card">
