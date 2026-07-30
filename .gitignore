@@ -1,0 +1,47 @@
+# Virtual environments
+.venv/
+venv/
+**/venv/
+**/.venv/
+
+# Node modules
+node_modules/
+**/node_modules/
+
+# Datasets
+archive/
+hamnosys_pkls_default_shape/
+how2sign_pkls_cropTrue_shapeTrue/
+**/how2sign_pkls_cropTrue_shapeTrue/
+
+# Large model binaries / libraries
+*.task
+*.h5
+*.zip
+*.msi
+*.jar
+stanford-parser-full-2018-10-17/
+**/stanford-parser-full-2018-10-17/
+**/stanza_resources/
+stanza_resources/
+
+# Build outputs
+.workspace/
+.output/
+.wrangler/
+.lovable/
+.tanstack/
+dist/
+**/dist/
+
+# Temp / Log files
+*.log
+**/debug_frames/
+debug_frames/
+**/__pycache__/
+__pycache__/
+tmp_test_image.jpg
+hand_test.png
+response.html
+fetched_index.html
+error_extract.txt
