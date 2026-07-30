@@ -259,18 +259,23 @@ function TextToSign() {
               value={speed}
               onValueChange={(val) => {
                 setSpeed(val);
-                const speedSpan = document.querySelector<HTMLElement>(".CWASASpeed.av0 select");
-                if (speedSpan) {
-                  const selectEl = speedSpan as HTMLSelectElement;
-                  if (val[0] <= 0.5) selectEl.value = "0.5";
-                  else if (val[0] <= 0.75) selectEl.value = "0.75";
-                  else if (val[0] <= 1.0) selectEl.value = "1.0";
-                  else if (val[0] <= 1.25) selectEl.value = "1.25";
-                  else if (val[0] <= 1.5) selectEl.value = "1.5";
-                  else selectEl.value = "2.0";
-                  const evt = document.createEvent("HTMLEvents");
-                  evt.initEvent("change", true, true);
-                  selectEl.dispatchEvent(evt);
+                const resetBtn = document.querySelector<HTMLButtonElement>(".bttnSpeedReset.av0");
+                const downBtn = document.querySelector<HTMLButtonElement>(".bttnSpeedDown.av0");
+                const upBtn = document.querySelector<HTMLButtonElement>(".bttnSpeedUp.av0");
+                if (resetBtn && downBtn && upBtn) {
+                  resetBtn.click();
+                  const targetSpeed = val[0];
+                  if (targetSpeed <= 0.5) {
+                    downBtn.click();
+                    downBtn.click();
+                  } else if (targetSpeed <= 0.75) {
+                    downBtn.click();
+                  } else if (targetSpeed >= 2.0) {
+                    upBtn.click();
+                    upBtn.click();
+                  } else if (targetSpeed >= 1.5) {
+                    upBtn.click();
+                  }
                 }
               }}
               min={0.25}

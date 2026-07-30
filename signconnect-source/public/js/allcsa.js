@@ -182340,6 +182340,7 @@ var actionfun;
 if (this.curAnimScheduler !== this.ambientScheduler) {
 Logger.callHook("animidle", null, this.avIndex);
 this.avGUI.stat("Playing complete");
+                    playerAvailableToPlay = true;
 }
 this.curAnimScheduler = null;
 actionfun = this.pendingAvName ? (() => {
@@ -182472,7 +182473,7 @@ if (typeof lggr.debug === "function") {
 lggr.debug(`SigningAvatar: ${msgpfx}Complete ${anim.countFrames()} frames`);
 }
 // custom code added by D.Singh starts here
-playerAvailableToPlay = true;
+// (Moved to donePlay to ensure animation plays to completion)
 // custom code added by D.Singh ends here
 anim.setCompleted();
 if (anim.hasFrames()) {
