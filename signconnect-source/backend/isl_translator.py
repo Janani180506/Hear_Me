@@ -54,9 +54,6 @@ class ISLTranslator:
                     raw_text = w.text.lower()
                     if raw_text in self.valid_words:
                         final_sequence.append(raw_text)
-                    else:
-                        for letter in raw_text:
-                            if letter.isalnum():
-                                final_sequence.append(letter.upper())
+                    # Untrained words are skipped entirely
                                 
         return final_sequence
