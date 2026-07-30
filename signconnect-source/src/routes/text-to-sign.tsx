@@ -151,8 +151,17 @@ function TextToSign() {
     (window as any).playerAvailableToPlay = true;
     let i = activeWord >= translatedSequence.length ? 0 : activeWord;
 
+    let lastWordStartTime = Date.now();
+
     playIntervalRef.current = setInterval(() => {
-      const isAvailable = (window as any).playerAvailableToPlay;
+      let isAvailable = (window as any).playerAvailableToPlay;
+
+      const timeSinceStart = Date.now() - lastWordStartTime;
+      if (!isAvailable && timeSinceStart > 6000) {
+        console.warn("Playback safety timeout reached. Skipping word...");
+        (window as any).playerAvailableToPlay = true;
+        isAvailable = true;
+      }
 
       if (i >= translatedSequence.length) {
         if (isAvailable) {
@@ -162,6 +171,7 @@ function TextToSign() {
         }
       } else if (isAvailable) {
         (window as any).playerAvailableToPlay = false;
+        lastWordStartTime = Date.now();
         const word = translatedSequence[i];
 
         if ((window as any).CWASA) {

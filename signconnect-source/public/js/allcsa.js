@@ -182059,6 +182059,7 @@ lggr.debug(`SigningAvatar: playSiGMLURL: ${surlAbs}`);
 return (Data.promiseURIText(surlAbs)).then(this.playSiGML).catch((err) => {
 // JRWG Not active yet. Would need to clear loading if we had set it!
 // Logger.callHook "animidle", null, @avIndex
+playerAvailableToPlay = true;
 return this.avGUI.stat("Animgen: SiGML URL not loaded");
 });
 }
@@ -182484,6 +182485,7 @@ f: anim.countFrames()
 }, this.avIndex);
 } else {
 this.avGUI.stat("SiGML has no valid signs");
+            playerAvailableToPlay = true;
 // Loading but not activated
 return Logger.callHook("sigmlloaded", null, this.avIndex);
 }
