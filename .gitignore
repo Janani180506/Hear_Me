@@ -45,3 +45,7 @@ hand_test.png
 response.html
 fetched_index.html
 error_extract.txt
+
+# Unignore vital avatar and applet jars
+!**/loc2021/**/*.jar
+
