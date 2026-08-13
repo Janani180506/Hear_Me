@@ -19,7 +19,7 @@ except ImportError as exc:  # pragma: no cover - runtime dependency check
     raise RuntimeError(f"Missing dependency for hand detection: {exc}") from exc
 
 
-ROOT_DIR = Path(__file__).resolve().parent.parent
+ROOT_DIR = Path(__file__).resolve().parent
 MODEL_PATH = ROOT_DIR / "model" / "cnn8grps_rad1_model.h5"
 
 GROUP_LABELS = [
