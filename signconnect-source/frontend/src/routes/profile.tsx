@@ -1,12 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
-import { User, Plus, Trash2, MessagesSquare } from "lucide-react";
+import { useState, useEffect } from "react";
+import { User, Plus, Trash2, Hand } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { EMERGENCY_CONTACTS, CONVERSATION_HISTORY } from "@/lib/dummy-data";
+import { CONVERSATION_HISTORY } from "@/lib/dummy-data";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/profile")({
@@ -19,20 +19,70 @@ export const Route = createFileRoute("/profile")({
   }),
 });
 
-function Profile() {
+export function Profile() {
   const [name, setName] = useState("Alex Rivera");
   const [language, setLanguage] = useState("American Sign Language (ASL)");
-  const [contacts, setContacts] = useState(EMERGENCY_CONTACTS);
+  const [contacts, setContacts] = useState<any[]>([]);
   const [newContact, setNewContact] = useState({ name: "", phone: "" });
 
-  const addContact = () => {
-    if (!newContact.name || !newContact.phone) return;
-    setContacts((c) => [
-      ...c,
-      { id: crypto.randomUUID(), name: newContact.name, relation: "Contact", phone: newContact.phone },
-    ]);
-    setNewContact({ name: "", phone: "" });
-    toast.success("Contact added");
+  useEffect(() => {
+    fetchCaregivers();
+  }, []);
+
+  const fetchCaregivers = async () => {
+    try {
+      const res = await fetch("http://localhost:8000/api/caregivers");
+      if (res.ok) {
+        const data = await res.json();
+        setContacts(Array.isArray(data) ? data : []);
+      }
+    } catch {
+      /* noop */
+    }
+  };
+
+  const addContact = async () => {
+    if (!newContact.name.trim() || !newContact.phone.trim()) {
+      toast.error("Please fill in contact name and phone");
+      return;
+    }
+
+    try {
+      const res = await fetch("http://localhost:8000/api/caregivers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newContact.name,
+          relation: "Caregiver",
+          phone: newContact.phone,
+          is_primary: contacts.length === 0,
+        }),
+      });
+
+      if (res.ok) {
+        toast.success(`Caregiver "${newContact.name}" added successfully!`);
+        setNewContact({ name: "", phone: "" });
+        fetchCaregivers();
+      } else {
+        toast.error("Failed to add caregiver");
+      }
+    } catch {
+      toast.error("Network error adding caregiver");
+    }
+  };
+
+  const deleteContact = async (id: string) => {
+    try {
+      const res = await fetch(`http://localhost:8000/api/caregivers/${id}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        toast.success("Contact removed");
+        fetchCaregivers();
+      }
+    } catch {
+      toast.error("Failed to remove contact");
+    }
   };
 
   return (
@@ -74,16 +124,16 @@ function Profile() {
 
         <div className="space-y-6">
           <div className="rounded-3xl border bg-card p-6 shadow-card">
-            <h3 className="mb-3 font-semibold">Emergency contacts</h3>
+            <h3 className="mb-3 font-semibold">Registered Emergency Caregivers</h3>
             <ul className="space-y-2">
               {contacts.map((c) => (
                 <li key={c.id} className="flex items-center justify-between rounded-xl bg-muted/60 p-3">
                   <div className="min-w-0">
                     <div className="truncate font-medium">{c.name}</div>
-                    <div className="text-xs text-muted-foreground">{c.relation} · {c.phone}</div>
+                    <div className="text-xs text-muted-foreground">{c.relation || "Caregiver"} · {c.phone}</div>
                   </div>
                   <button
-                    onClick={() => setContacts((cs) => cs.filter((x) => x.id !== c.id))}
+                    onClick={() => deleteContact(c.id)}
                     aria-label={`Remove ${c.name}`}
                     className="grid h-9 w-9 shrink-0 place-items-center rounded-lg text-destructive hover:bg-destructive/10"
                   >
@@ -94,12 +144,12 @@ function Profile() {
             </ul>
             <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
               <Input
-                placeholder="Name"
+                placeholder="Caregiver Name"
                 value={newContact.name}
                 onChange={(e) => setNewContact((n) => ({ ...n, name: e.target.value }))}
               />
               <Input
-                placeholder="Phone"
+                placeholder="WhatsApp Phone Number"
                 value={newContact.phone}
                 onChange={(e) => setNewContact((n) => ({ ...n, phone: e.target.value }))}
               />
@@ -116,7 +166,7 @@ function Profile() {
                 <li key={h.id} className="flex items-center justify-between py-3">
                   <div className="flex items-center gap-3">
                     <div className="grid h-10 w-10 place-items-center rounded-xl bg-primary/10 text-primary">
-                      <MessagesSquare className="h-5 w-5" />
+                      <Hand className="h-5 w-5" />
                     </div>
                     <div>
                       <div className="font-medium">{h.summary}</div>

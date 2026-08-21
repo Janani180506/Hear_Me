@@ -13,8 +13,9 @@ import { Route as TextToSignRouteImport } from './routes/text-to-sign'
 import { Route as SignToTextRouteImport } from './routes/sign-to-text'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ProfileRouteImport } from './routes/profile'
-import { Route as LiveRouteImport } from './routes/live'
 import { Route as EmergencyRouteImport } from './routes/emergency'
+import { Route as CommunicationBoardRouteImport } from './routes/communication-board'
+import { Route as CaregiverRouteImport } from './routes/caregiver'
 import { Route as IndexRouteImport } from './routes/index'
 
 const TextToSignRoute = TextToSignRouteImport.update({
@@ -37,14 +38,19 @@ const ProfileRoute = ProfileRouteImport.update({
   path: '/profile',
   getParentRoute: () => rootRouteImport,
 } as any)
-const LiveRoute = LiveRouteImport.update({
-  id: '/live',
-  path: '/live',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const EmergencyRoute = EmergencyRouteImport.update({
   id: '/emergency',
   path: '/emergency',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CommunicationBoardRoute = CommunicationBoardRouteImport.update({
+  id: '/communication-board',
+  path: '/communication-board',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CaregiverRoute = CaregiverRouteImport.update({
+  id: '/caregiver',
+  path: '/caregiver',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -55,8 +61,9 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/caregiver': typeof CaregiverRoute
+  '/communication-board': typeof CommunicationBoardRoute
   '/emergency': typeof EmergencyRoute
-  '/live': typeof LiveRoute
   '/profile': typeof ProfileRoute
   '/settings': typeof SettingsRoute
   '/sign-to-text': typeof SignToTextRoute
@@ -64,8 +71,9 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/caregiver': typeof CaregiverRoute
+  '/communication-board': typeof CommunicationBoardRoute
   '/emergency': typeof EmergencyRoute
-  '/live': typeof LiveRoute
   '/profile': typeof ProfileRoute
   '/settings': typeof SettingsRoute
   '/sign-to-text': typeof SignToTextRoute
@@ -74,8 +82,9 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/caregiver': typeof CaregiverRoute
+  '/communication-board': typeof CommunicationBoardRoute
   '/emergency': typeof EmergencyRoute
-  '/live': typeof LiveRoute
   '/profile': typeof ProfileRoute
   '/settings': typeof SettingsRoute
   '/sign-to-text': typeof SignToTextRoute
@@ -85,8 +94,9 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/caregiver'
+    | '/communication-board'
     | '/emergency'
-    | '/live'
     | '/profile'
     | '/settings'
     | '/sign-to-text'
@@ -94,8 +104,9 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/caregiver'
+    | '/communication-board'
     | '/emergency'
-    | '/live'
     | '/profile'
     | '/settings'
     | '/sign-to-text'
@@ -103,8 +114,9 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/caregiver'
+    | '/communication-board'
     | '/emergency'
-    | '/live'
     | '/profile'
     | '/settings'
     | '/sign-to-text'
@@ -113,8 +125,9 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  CaregiverRoute: typeof CaregiverRoute
+  CommunicationBoardRoute: typeof CommunicationBoardRoute
   EmergencyRoute: typeof EmergencyRoute
-  LiveRoute: typeof LiveRoute
   ProfileRoute: typeof ProfileRoute
   SettingsRoute: typeof SettingsRoute
   SignToTextRoute: typeof SignToTextRoute
@@ -151,18 +164,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProfileRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/live': {
-      id: '/live'
-      path: '/live'
-      fullPath: '/live'
-      preLoaderRoute: typeof LiveRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/emergency': {
       id: '/emergency'
       path: '/emergency'
       fullPath: '/emergency'
       preLoaderRoute: typeof EmergencyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/communication-board': {
+      id: '/communication-board'
+      path: '/communication-board'
+      fullPath: '/communication-board'
+      preLoaderRoute: typeof CommunicationBoardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/caregiver': {
+      id: '/caregiver'
+      path: '/caregiver'
+      fullPath: '/caregiver'
+      preLoaderRoute: typeof CaregiverRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/': {
@@ -177,8 +197,9 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  CaregiverRoute: CaregiverRoute,
+  CommunicationBoardRoute: CommunicationBoardRoute,
   EmergencyRoute: EmergencyRoute,
-  LiveRoute: LiveRoute,
   ProfileRoute: ProfileRoute,
   SettingsRoute: SettingsRoute,
   SignToTextRoute: SignToTextRoute,

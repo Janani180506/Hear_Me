@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Hand, Type, MessagesSquare, Siren, ArrowRight, Sparkles, Globe, Shield } from "lucide-react";
+import { Hand, Type, Siren, ArrowRight, Sparkles, Globe, Shield } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 
 export const Route = createFileRoute("/")({
@@ -10,7 +10,7 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Real-time sign-to-text, text-to-sign avatar, live conversations and emergency SOS built for the deaf and mute community.",
+          "Real-time sign-to-text, text-to-sign avatar, and emergency SOS built for the deaf and mute community.",
       },
     ],
   }),
@@ -30,13 +30,6 @@ const FEATURES = [
     title: "Text to Sign",
     desc: "Type a sentence and watch a 3D avatar sign it back with playback controls.",
     color: "from-sky-500 to-blue-600",
-  },
-  {
-    to: "/live",
-    icon: MessagesSquare,
-    title: "Live Communication",
-    desc: "Split-screen conversation mode with history, timestamps and saving.",
-    color: "from-indigo-500 to-violet-500",
   },
   {
     to: "/emergency",
@@ -79,10 +72,10 @@ function Home() {
               Start signing <ArrowRight className="h-4 w-4" />
             </Link>
             <Link
-              to="/live"
+              to="/text-to-sign"
               className="inline-flex items-center gap-2 rounded-full border border-white/30 bg-white/10 px-5 py-3 text-sm font-semibold text-white backdrop-blur hover:bg-white/20"
             >
-              Try live chat
+              Text to Sign
             </Link>
           </div>
         </div>
@@ -103,7 +96,7 @@ function Home() {
         <PageHeader
           eyebrow="Explore"
           title="Everything you need in one place"
-          description="Four focused tools that bridge sign, text and speech in real time."
+          description="Focused tools that bridge sign, text and speech in real time."
         />
         <div className="grid gap-4 sm:grid-cols-2">
           {FEATURES.map(({ to, icon: Icon, title, desc, color }) => (

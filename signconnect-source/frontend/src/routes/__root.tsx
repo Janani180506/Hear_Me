@@ -12,12 +12,13 @@ import {
   Home,
   Hand,
   Type,
-  MessagesSquare,
   Siren,
   User,
   Settings as SettingsIcon,
   Menu,
   X,
+  LayoutGrid,
+  Users,
 } from "lucide-react";
 
 import appCss from "../styles.css?url";
@@ -29,7 +30,8 @@ const NAV = [
   { to: "/", label: "Home", icon: Home },
   { to: "/sign-to-text", label: "Sign to Text", icon: Hand },
   { to: "/text-to-sign", label: "Text to Sign", icon: Type },
-  { to: "/live", label: "Live Chat", icon: MessagesSquare },
+  { to: "/communication-board", label: "TouchSpeak Board", icon: LayoutGrid },
+  { to: "/caregiver", label: "Caregiver", icon: Users },
   { to: "/emergency", label: "Emergency SOS", icon: Siren },
   { to: "/profile", label: "Profile", icon: User },
   { to: "/settings", label: "Settings", icon: SettingsIcon },
@@ -91,7 +93,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       {
         name: "description",
         content:
-          "SignConnect: real-time AI communication for deaf, mute and hearing individuals. Sign-to-text, text-to-sign avatar, live chat and emergency SOS.",
+          "SignConnect: real-time AI communication for deaf, mute and hearing individuals. Sign-to-text, text-to-sign avatar, and emergency SOS.",
       },
       { property: "og:title", content: "SignConnect — AI Communication" },
       {

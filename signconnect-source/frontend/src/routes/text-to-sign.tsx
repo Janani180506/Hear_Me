@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
 
 const AvatarContainer = React.memo(() => {
   return (
@@ -14,7 +15,6 @@ const AvatarContainer = React.memo(() => {
         className="CWASAAvatar av0"
         style={{ transform: "scale(1.15)", transformOrigin: "center center" }}
       />
-      {/* Hidden CWASA UI hooks to bypass null ref checks inside allcsa.js */}
       <div className="hidden">
         <span className="CWASAAvMenu av0" />
         <input type="button" value="Sign" className="bttnPlaySiGMLURL av0" />
@@ -39,21 +39,19 @@ export const Route = createFileRoute("/text-to-sign")({
   }),
 });
 
-function TextToSign() {
-  const [text, setText] = useState("Hello, welcome to SignConnect!");
+export function TextToSign() {
+  const [text, setText] = useState("Hello welcome to SignConnect");
   const [playing, setPlaying] = useState(false);
-  const [speed, setSpeed] = useState([1]);
+  const [speed, setSpeed] = useState<number[]>([1]);
   const [activeWord, setActiveWord] = useState(0);
 
   const [translatedSequence, setTranslatedSequence] = useState<string[]>(["hello", "welcome", "to", "signconnect"]);
   const [loading, setLoading] = useState(false);
-  const [avatarLoaded, setAvatarLoaded] = useState(false);
 
   const playIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Initialize and load CWASA assets globally
   useEffect(() => {
-    // 1. Add CSS
+    // 1. Load CSS
     const link = document.createElement("link");
     link.rel = "stylesheet";
     link.href = "/css/cwasa.css";
@@ -75,27 +73,17 @@ function TextToSign() {
     script.type = "text/javascript";
     script.id = "cwasa-script";
     script.onload = () => {
-      console.log("CWASA player script loaded.");
       if ((window as any).CWASA) {
         try {
           (window as any).CWASA.init((window as any).initCfg);
         } catch (e) {
-          console.error("Error calling CWASA init:", e);
+          console.error("CWASA init error:", e);
         }
       }
     };
     document.body.appendChild(script);
 
-    // Setup checker for avatarLoaded state
-    const checkInterval = setInterval(() => {
-      if ((window as any).tuavatarLoaded) {
-        setAvatarLoaded(true);
-        clearInterval(checkInterval);
-      }
-    }, 500);
-
     return () => {
-      clearInterval(checkInterval);
       if (playIntervalRef.current) clearInterval(playIntervalRef.current);
       const existingLink = document.getElementById("cwasa-css");
       if (existingLink) existingLink.remove();
@@ -104,7 +92,19 @@ function TextToSign() {
     };
   }, []);
 
-  // Debounced translation fetch from FastAPI backend (port 8000)
+  // Set speed factor when speed slider changes
+  useEffect(() => {
+    const spdVal = speed[0] || 1;
+    if ((window as any).CWASA && typeof (window as any).CWASA.setSpeedFactor === "function") {
+      try {
+        (window as any).CWASA.setSpeedFactor(spdVal);
+      } catch (e) {
+        console.error("Speed adjustment error:", e);
+      }
+    }
+  }, [speed]);
+
+  // Translate text to ISL word sequence
   useEffect(() => {
     if (!text.trim()) {
       setTranslatedSequence([]);
@@ -114,36 +114,39 @@ function TextToSign() {
     const delayDebounceFn = setTimeout(async () => {
       setLoading(true);
       try {
-        // POST to FastAPI backend running on port 8000
         const response = await fetch("http://localhost:8000/translate", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ text }),
         });
 
         if (response.ok) {
           const data = await response.json();
-          if (data.ok && Array.isArray(data.sequence)) {
-            const words = data.sequence.map((w: string) => w.toLowerCase());
-            setTranslatedSequence(words);
-            setActiveWord(0);
-            stopPlayback();
+          if (data.ok && Array.isArray(data.sequence) && data.sequence.length > 0) {
+            setTranslatedSequence(data.sequence.map((w: string) => w.toLowerCase()));
+          } else {
+            // Fallback split words
+            setTranslatedSequence(text.trim().toLowerCase().split(/\s+/));
           }
+          setActiveWord(0);
+          stopPlayback();
         }
       } catch (err) {
-        console.error("ISL translation failed:", err);
+        // Fallback split words
+        setTranslatedSequence(text.trim().toLowerCase().split(/\s+/));
       } finally {
         setLoading(false);
       }
-    }, 500);
+    }, 400);
 
     return () => clearTimeout(delayDebounceFn);
   }, [text]);
 
   const startPlayback = () => {
-    if (translatedSequence.length === 0) return;
+    if (translatedSequence.length === 0) {
+      toast.error("Enter a sentence to sign first.");
+      return;
+    }
     setPlaying(true);
 
     if (playIntervalRef.current) clearInterval(playIntervalRef.current);
@@ -155,10 +158,9 @@ function TextToSign() {
 
     playIntervalRef.current = setInterval(() => {
       let isAvailable = (window as any).playerAvailableToPlay;
-
       const timeSinceStart = Date.now() - lastWordStartTime;
-      if (!isAvailable && timeSinceStart > 6000) {
-        console.warn("Playback safety timeout reached. Skipping word...");
+
+      if (!isAvailable && timeSinceStart > 5000) {
         (window as any).playerAvailableToPlay = true;
         isAvailable = true;
       }
@@ -168,6 +170,7 @@ function TextToSign() {
           clearInterval(playIntervalRef.current!);
           setPlaying(false);
           setActiveWord(0);
+          toast.success("Completed sign sequence.");
         }
       } else if (isAvailable) {
         (window as any).playerAvailableToPlay = false;
@@ -175,25 +178,29 @@ function TextToSign() {
         const word = translatedSequence[i];
 
         if ((window as any).CWASA) {
-          // Pass the absolute URL of the sigml file to the player
-          const fullSigmlURL = window.location.origin + "/SignFiles/" + word + ".sigml";
+          const sigmlPath = window.location.origin + "/SignFiles/" + word + ".sigml";
           try {
-            // Update hidden url input to prevent library index errors
             const urlTextInput = document.getElementById("URLText");
             if (urlTextInput) {
-              (urlTextInput as HTMLInputElement).value = fullSigmlURL;
+              (urlTextInput as HTMLInputElement).value = sigmlPath;
             }
-            (window as any).CWASA.playSiGMLURL(fullSigmlURL);
+            (window as any).CWASA.playSiGMLURL(sigmlPath);
           } catch (e) {
-            console.error("CWASA play error:", e);
-            (window as any).playerAvailableToPlay = true;
+            // Fallback to letter spelling
+            const firstChar = word.charAt(0).toUpperCase();
+            const letterSigml = window.location.origin + "/SignFiles/" + firstChar + ".sigml";
+            try {
+              (window as any).CWASA.playSiGMLURL(letterSigml);
+            } catch {
+              (window as any).playerAvailableToPlay = true;
+            }
           }
         }
 
         setActiveWord(i);
         i++;
       }
-    }, 200);
+    }, 300);
   };
 
   const stopPlayback = () => {
@@ -203,9 +210,7 @@ function TextToSign() {
       playIntervalRef.current = null;
     }
     const stopBtn = document.querySelector<HTMLButtonElement>(".bttnStop.av0");
-    if (stopBtn) {
-      stopBtn.click();
-    }
+    if (stopBtn) stopBtn.click();
     (window as any).playerAvailableToPlay = true;
   };
 
@@ -221,9 +226,9 @@ function TextToSign() {
     <div className="space-y-6">
       <PageHeader
         icon={<TypeIcon className="h-6 w-6" />}
-        eyebrow="Avatar"
-        title="Text to Sign"
-        description="Type any sentence and watch an animated 3D avatar translate it into sign language."
+        eyebrow="Avatar Animation"
+        title="Text to Sign Engine"
+        description="Type any sentence and watch the 3D avatar translate and perform Indian Sign Language animations."
       />
 
       <div className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
@@ -243,90 +248,75 @@ function TextToSign() {
               className="mt-2 resize-none text-base"
             />
             {loading && (
-              <div className="mt-4">
-                <span className="text-xs text-muted-foreground animate-pulse">Translating to ISL grammar...</span>
+              <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground animate-pulse">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Translating to ISL syntax...
               </div>
             )}
           </div>
 
-          <div className="rounded-3xl border bg-card p-5 shadow-card">
+          <div className="rounded-3xl border bg-card p-5 shadow-card space-y-4">
             <div className="flex items-center justify-between">
-              <span className="inline-flex items-center gap-2 text-sm font-medium">
-                <Gauge className="h-4 w-4 text-primary" /> Speed Control
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Mapped Sign Sequence
               </span>
-              <span className="font-mono text-sm text-muted-foreground">{speed[0].toFixed(2)}x</span>
+              <Badge variant="outline" className="text-xs">
+                {translatedSequence.length} Sign Units
+              </Badge>
             </div>
 
-            <Slider
-              value={speed}
-              onValueChange={(val) => {
-                setSpeed(val);
-                const resetBtn = document.querySelector<HTMLButtonElement>(".bttnSpeedReset.av0");
-                const downBtn = document.querySelector<HTMLButtonElement>(".bttnSpeedDown.av0");
-                const upBtn = document.querySelector<HTMLButtonElement>(".bttnSpeedUp.av0");
-                if (resetBtn && downBtn && upBtn) {
-                  resetBtn.click();
-                  const targetSpeed = val[0];
-                  if (targetSpeed <= 0.5) {
-                    downBtn.click();
-                    downBtn.click();
-                  } else if (targetSpeed <= 0.75) {
-                    downBtn.click();
-                  } else if (targetSpeed >= 2.0) {
-                    upBtn.click();
-                    upBtn.click();
-                  } else if (targetSpeed >= 1.5) {
-                    upBtn.click();
-                  }
-                }
-              }}
-              min={0.25}
-              max={2}
-              step={0.25}
-              className="mt-3"
-            />
-
-            <div className="mt-5 flex flex-wrap gap-2">
-              {playing ? (
-                <Button onClick={stopPlayback} variant="outline" className="rounded-xl">
-                  <Pause className="mr-2 h-4 w-4" /> Pause
-                </Button>
+            <div className="flex flex-wrap gap-2">
+              {translatedSequence.length === 0 ? (
+                <span className="text-sm text-muted-foreground italic">No signs mapped yet</span>
               ) : (
-                <Button onClick={startPlayback} disabled={!avatarLoaded || translatedSequence.length === 0} className="gradient-primary text-primary-foreground rounded-xl">
-                  <Play className="mr-2 h-4 w-4" /> Play
-                </Button>
+                translatedSequence.map((w, idx) => (
+                  <Badge
+                    key={idx}
+                    variant={playing && activeWord === idx ? "default" : "secondary"}
+                    className={`px-3 py-1.5 text-sm uppercase transition-all ${
+                      playing && activeWord === idx ? "scale-105 shadow-glow font-bold" : ""
+                    }`}
+                  >
+                    {w}
+                  </Badge>
+                ))
               )}
-              <Button onClick={replay} disabled={!avatarLoaded || translatedSequence.length === 0} variant="outline" className="rounded-xl">
-                <RotateCcw className="mr-2 h-4 w-4" /> Replay
-              </Button>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-4 pt-2 border-t">
+              <div className="flex items-center gap-2">
+                {!playing ? (
+                  <Button onClick={startPlayback} className="gap-2 font-semibold shadow-glow gradient-primary">
+                    <Play className="h-4 w-4" /> Play Signs
+                  </Button>
+                ) : (
+                  <Button onClick={stopPlayback} variant="outline" className="gap-2">
+                    <Pause className="h-4 w-4" /> Pause
+                  </Button>
+                )}
+                <Button onClick={replay} variant="outline" size="icon" title="Replay Sequence">
+                  <RotateCcw className="h-4 w-4" />
+                </Button>
+              </div>
+
+              <div className="flex items-center gap-3 min-w-[160px]">
+                <Gauge className="h-4 w-4 text-muted-foreground" />
+                <Slider
+                  value={speed}
+                  onValueChange={(val) => setSpeed(val)}
+                  min={0.5}
+                  max={2.0}
+                  step={0.25}
+                  className="flex-1"
+                />
+                <span className="text-xs font-bold w-8">{speed[0]}x</span>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* 3D WebGL Avatar View Container */}
-        <div className="relative aspect-square overflow-hidden rounded-3xl border shadow-elevated sm:aspect-[4/3] lg:aspect-auto lg:min-h-[500px] flex flex-col items-center justify-between p-4"
-          style={{ background: "var(--gradient-soft)" }}
-        >
-          {/* Avatar Loading Overlay */}
-          {!avatarLoaded && (
-            <div className="absolute inset-0 bg-background/50 backdrop-blur-sm z-10 flex flex-col items-center justify-center gap-3">
-              <Loader2 className="h-10 w-10 text-primary animate-spin" />
-              <p className="text-sm font-semibold text-muted-foreground animate-pulse">
-                Initializing 3D Avatar Player...
-              </p>
-            </div>
-          )}
-
-          {/* Static Avatar Container that never triggers React Virtual DOM updates */}
+        {/* 3D Avatar Display Container */}
+        <div className="flex flex-col rounded-3xl border bg-card p-4 shadow-card overflow-hidden">
           <AvatarContainer />
-
-          {/* Active Word Gloss Overlay */}
-          <div className="w-full rounded-2xl glass-strong p-3 text-center z-5">
-            <div className="text-xs uppercase tracking-wider text-muted-foreground">Now signing</div>
-            <div className="mt-0.5 text-lg font-semibold text-gradient">
-              {translatedSequence[activeWord] ?? "—"}
-            </div>
-          </div>
         </div>
       </div>
     </div>
