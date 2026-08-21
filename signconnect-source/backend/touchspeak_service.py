@@ -185,33 +185,19 @@ DEFAULT_CARDS = [
 
     # Emergency Category
     {
-        "id": "card_help",
-        "category": "Emergency",
-        "category_id": "Emergency",
-        "title": "Help",
-        "phrase": "I need help.",
-        "spoken_phrase": "I need help.",
-        "icon": "Siren",
-        "display_order": 10,
-        "translations": {
-            "en": "I need help.",
-            "ta": "எனக்கு உதவி வேண்டும்.",
-            "hi": "मुझे मदद चाहिए।"
-        }
-    },
-    {
         "id": "card_emergency_help",
         "category": "Emergency",
         "category_id": "Emergency",
         "title": "Emergency Help",
-        "phrase": "Emergency! Please help me immediately!",
-        "spoken_phrase": "Emergency! Please help me immediately!",
+        "phrase": "I need help",
+        "spoken_phrase": "I need help",
         "icon": "Siren",
-        "display_order": 11,
+        "display_order": 10,
+        "is_emergency": True,
         "translations": {
-            "en": "Emergency! Please help me immediately!",
-            "ta": "அவசரம்! தயவுசெய்து உடனடியாக எனக்கு உதவுங்கள்!",
-            "hi": "आपत्काल! कृपया तुरंत मेरी मदद करें!"
+            "en": "I need help",
+            "ta": "எனக்கு உதவி வேண்டும்",
+            "hi": "मुझे मदद चाहिए"
         }
     },
     {
@@ -222,7 +208,7 @@ DEFAULT_CARDS = [
         "phrase": "Please call a doctor.",
         "spoken_phrase": "Please call a doctor.",
         "icon": "PhoneCall",
-        "display_order": 12,
+        "display_order": 11,
         "translations": {
             "en": "Please call a doctor.",
             "ta": "தயவுசெய்து மருத்துவரை அழைக்கவும்.",
@@ -359,6 +345,16 @@ class TouchSpeakService:
                 c["spoken_phrase"] = c.get("phrase", "")
             if "phrase" not in c or not c["phrase"]:
                 c["phrase"] = c.get("spoken_phrase", "")
+
+            # Ensure Emergency Help card strictly has phrase 'I need help'
+            if c.get("id") == "card_emergency_help" or c.get("title") == "Emergency Help":
+                c["phrase"] = "I need help"
+                c["spoken_phrase"] = "I need help"
+                c["translations"] = {
+                    "en": "I need help",
+                    "ta": "எனக்கு உதவி வேண்டும்",
+                    "hi": "मुझे मदद चाहिए"
+                }
 
             # Ensure translations object with en, ta, hi
             trans = c.get("translations") or c.get("phrases") or {}

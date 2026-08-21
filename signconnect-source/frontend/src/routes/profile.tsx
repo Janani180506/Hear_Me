@@ -19,7 +19,7 @@ export const Route = createFileRoute("/profile")({
   }),
 });
 
-export function Profile() {
+function Profile() {
   const [name, setName] = useState("Alex Rivera");
   const [language, setLanguage] = useState("American Sign Language (ASL)");
   const [contacts, setContacts] = useState<any[]>([]);

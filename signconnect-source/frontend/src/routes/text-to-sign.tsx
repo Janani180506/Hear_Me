@@ -39,7 +39,7 @@ export const Route = createFileRoute("/text-to-sign")({
   }),
 });
 
-export function TextToSign() {
+function TextToSign() {
   const [text, setText] = useState("Hello welcome to SignConnect");
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState<number[]>([1]);

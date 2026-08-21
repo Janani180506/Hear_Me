@@ -6,6 +6,7 @@ import math
 import os
 import tempfile
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -250,7 +251,7 @@ app = FastAPI(title="SignConnect Unified API & Gesture Engine")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -305,6 +306,14 @@ class WhatsAppSendRequest(BaseModel):
     user_name: Optional[str] = "Janani"
     message: str
     card_title: Optional[str] = None
+
+
+class TouchSpeakEmergencyRequest(BaseModel):
+    user_id: Optional[str] = "Alex Rivera"
+    user_name: Optional[str] = "Alex Rivera"
+    message: Optional[str] = "I need help"
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
 
 
 class TTSRequest(BaseModel):
@@ -659,6 +668,105 @@ async def trigger_sos(req: SOSRequest) -> Dict[str, Any]:
                 wa_results.append({"caregiver": cg.get("name"), "result": wa_res})
 
     return {"status": "success", "log": log, "whatsapp_alerts": wa_results}
+
+
+@app.post("/api/emergency/touchspeak")
+async def trigger_touchspeak_emergency(req: TouchSpeakEmergencyRequest) -> Dict[str, Any]:
+    caregivers = touchspeak_service.get_caregivers()
+    if not caregivers:
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": "failed",
+                "message": "No caregiver is registered. Please add a caregiver first.",
+                "caregivers_notified": 0
+            }
+        )
+
+    # Deduplicate caregivers by cleaned phone number
+    unique_caregivers = []
+    seen_phones = set()
+    for cg in caregivers:
+        raw_phone = cg.get("phone", "")
+        clean_p = whatsapp_service.clean_phone_number(raw_phone)
+        if clean_p and clean_p not in seen_phones:
+            seen_phones.add(clean_p)
+            unique_caregivers.append((cg, clean_p))
+
+    if not unique_caregivers:
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": "failed",
+                "message": "No registered caregiver has a valid WhatsApp phone number.",
+                "caregivers_notified": 0
+            }
+        )
+
+    if req.latitude is not None and req.longitude is not None:
+        location_str = f"https://www.google.com/maps?q={req.latitude},{req.longitude}"
+    else:
+        location_str = "Location unavailable"
+
+    user_name = req.user_name or req.user_id or "Alex Rivera"
+    req_phrase = req.message or "I need help"
+    current_time = datetime.now().strftime("%I:%M %p, %b %d, %Y")
+
+    formatted_msg = (
+        f"🚨 EMERGENCY ALERT\n\n"
+        f"User: {user_name}\n\n"
+        f"The user needs immediate help.\n\n"
+        f"Request:\n\"{req_phrase}\"\n\n"
+        f"Location:\n{location_str}\n\n"
+        f"Time:\n{current_time}\n\n"
+        f"Please check on the user immediately."
+    )
+
+    notified_count = 0
+    delivery_details = []
+    is_wa_configured = whatsapp_service.is_configured()
+
+    if is_wa_configured:
+        for cg, phone in unique_caregivers:
+            res = whatsapp_service.send_text_message(to_phone=phone, message_body=formatted_msg)
+            if res.get("ok"):
+                notified_count += 1
+            delivery_details.append({"caregiver": cg.get("name"), "phone": phone, "result": res})
+
+    loc_dict = {"latitude": req.latitude, "longitude": req.longitude} if req.latitude is not None and req.longitude is not None else None
+    touchspeak_service.trigger_sos(
+        user_id=user_name,
+        location=loc_dict,
+        message=formatted_msg,
+        caregiver_name=", ".join([cg.get("name", "") for cg, _ in unique_caregivers]),
+        caregiver_phone=", ".join([p for _, p in unique_caregivers]),
+        status="Active"
+    )
+
+    registered_cg_list = [cg for cg, _ in unique_caregivers]
+
+    if notified_count > 0:
+        return {
+            "status": "success",
+            "message": "Emergency alert sent successfully via WhatsApp Cloud API",
+            "caregivers_notified": notified_count,
+            "caregivers": registered_cg_list,
+            "details": delivery_details,
+            "whatsapp_message": formatted_msg
+        }
+    else:
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": "fallback" if not is_wa_configured else "failed",
+                "configured": is_wa_configured,
+                "message": "WhatsApp Cloud API credentials not configured in backend .env." if not is_wa_configured else "Unable to send emergency alert via WhatsApp API. Please check configuration.",
+                "caregivers_notified": 0,
+                "caregivers": registered_cg_list,
+                "details": delivery_details,
+                "whatsapp_message": formatted_msg
+            }
+        )
 
 
 @app.get("/api/emergency/logs")

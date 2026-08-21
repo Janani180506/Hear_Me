@@ -90,7 +90,7 @@ function getIconComponent(iconName: string) {
   return ICON_MAP[iconName] || MessageSquare;
 }
 
-export function CommunicationBoardPage() {
+function CommunicationBoardPage() {
   const [selectedLanguage, setSelectedLanguage] = useState<"en" | "ta" | "hi">("en");
   const [activeCategory, setActiveCategory] = useState<string>("all");
   const [sentence, setSentence] = useState<string[]>([]);
@@ -237,29 +237,16 @@ export function CommunicationBoardPage() {
         },
       },
       {
-        id: "card_help",
-        category: "Emergency",
-        category_id: "Emergency",
-        title: "Help",
-        phrase: "I need help.",
-        icon: "Siren",
-        translations: {
-          en: "I need help.",
-          ta: "எனக்கு உதவி வேண்டும்.",
-          hi: "मुझे मदद चाहिए।",
-        },
-      },
-      {
         id: "card_emergency_help",
         category: "Emergency",
         category_id: "Emergency",
         title: "Emergency Help",
-        phrase: "Emergency! Please help me immediately!",
+        phrase: "I need help",
         icon: "Siren",
         translations: {
-          en: "Emergency! Please help me immediately!",
-          ta: "அவசரம்! தயவுசெய்து உடனடியாக எனக்கு உதவுங்கள்!",
-          hi: "आपत्काल! कृपया तुरंत मेरी मदद करें!",
+          en: "I need help",
+          ta: "எனக்கு உதவி வேண்டும்",
+          hi: "मुझे मदद चाहिए",
         },
       },
       {
@@ -305,6 +292,12 @@ export function CommunicationBoardPage() {
   };
 
   const getPhraseForCard = (card: CommunicationCard): string => {
+    if (card.id === "card_emergency_help" || card.title === "Emergency Help") {
+      if (selectedLanguage === "ta") return "எனக்கு உதவி வேண்டும்";
+      if (selectedLanguage === "hi") return "मुझे मदद चाहिए";
+      return "I need help";
+    }
+
     const t = card.translations || (card as any).phrases;
     if (t && t[selectedLanguage] && String(t[selectedLanguage]).trim()) {
       return String(t[selectedLanguage]).trim();
@@ -315,7 +308,110 @@ export function CommunicationBoardPage() {
     return "";
   };
 
+  const handleEmergencyClick = async (card: CommunicationCard) => {
+    const spokenText = getPhraseForCard(card) || "I need help";
+
+    // 1. Speak "I need help" locally on user's device via local TTS (SpeechSynthesis API)
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(spokenText);
+      if (selectedLanguage === "ta") utterance.lang = "ta-IN";
+      else if (selectedLanguage === "hi") utterance.lang = "hi-IN";
+      else utterance.lang = "en-US";
+      window.speechSynthesis.speak(utterance);
+    }
+
+    toast.info("Sending emergency alert to caregiver...");
+
+    // 2. Obtain browser location using Geolocation API
+    let lat: number | null = null;
+    let lng: number | null = null;
+
+    if ("geolocation" in navigator) {
+      try {
+        const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            enableHighAccuracy: true,
+            timeout: 7000,
+            maximumAge: 0,
+          });
+        });
+        lat = pos.coords.latitude;
+        lng = pos.coords.longitude;
+      } catch (err) {
+        console.warn("[Emergency Card] Geolocation unavailable or permission denied:", err);
+      }
+    }
+
+    // 3. Send POST request to backend WhatsApp emergency endpoint
+    try {
+      const res = await fetch("http://localhost:8000/api/emergency/touchspeak", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: "Alex Rivera",
+          user_name: "Alex Rivera",
+          message: "I need help",
+          latitude: lat,
+          longitude: lng,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (data.status === "failed" && data.message?.includes("No caregiver is registered")) {
+        toast.error("No caregiver is registered. Please add a caregiver first.");
+        return;
+      }
+
+      if (res.ok && data.status === "success") {
+        toast.success("✓ Emergency alert sent to caregiver");
+      } else {
+        // Fallback: If Meta Cloud API credentials not configured in backend .env or delivery failed, open wa.me link directly for registered caregiver
+        const caregivers = data.caregivers || [];
+        if (caregivers.length > 0) {
+          const primary = caregivers.find((c: any) => c.is_primary) || caregivers[0];
+          const cleanPhone = (primary.phone || "").replace(/[^0-9+]/g, "").replace(/^\+/, "");
+          if (cleanPhone) {
+            const locText = lat && lng ? `https://www.google.com/maps?q=${lat},${lng}` : "Location unavailable";
+            const currentStr = new Date().toLocaleString();
+            const msg = `🚨 EMERGENCY ALERT\n\nUser: Alex Rivera\n\nThe user needs immediate help.\n\nRequest:\n"${spokenText}"\n\nLocation:\n${locText}\n\nTime:\n${currentStr}\n\nPlease check on the user immediately.`;
+            const waUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(msg)}`;
+            window.open(waUrl, "_blank");
+            toast.success("✓ Emergency alert dispatched to caregiver via WhatsApp");
+            return;
+          }
+        }
+        toast.error(data.message || "Unable to send emergency alert. Please check caregiver WhatsApp configuration.");
+      }
+    } catch (e) {
+      console.error("[Emergency Card] Network error sending alert:", e);
+      toast.error("Unable to send emergency alert. Please check network or caregiver configuration.");
+    }
+
+    // 4. Record click for AI phrase predictor
+    fetch("http://localhost:8000/api/communication/card-click", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: "user_default",
+        card_id: card.id,
+        phrase: spokenText,
+      }),
+    }).catch(() => {});
+  };
+
   const handleCardClick = (card: CommunicationCard) => {
+    const isEmergency =
+      card.id === "card_emergency_help" ||
+      card.title === "Emergency Help" ||
+      (card as any).is_emergency;
+
+    if (isEmergency) {
+      handleEmergencyClick(card);
+      return;
+    }
+
     const phraseText = getPhraseForCard(card);
 
     if (!phraseText) {
@@ -560,6 +656,34 @@ export function CommunicationBoardPage() {
           {filteredCards.map((card) => {
             const IconComp = getIconComponent(card.icon);
             const phraseText = getPhraseForCard(card);
+            const isEmergency =
+              card.id === "card_emergency_help" ||
+              card.title === "Emergency Help" ||
+              (card as any).is_emergency;
+
+            if (isEmergency) {
+              return (
+                <Card
+                  key={card.id}
+                  className="group relative cursor-pointer border-2 border-destructive/70 bg-destructive/5 hover:bg-destructive/10 transition-all hover:shadow-xl hover:-translate-y-1 active:translate-y-0 shadow-md"
+                  onClick={() => handleCardClick(card)}
+                >
+                  <CardContent className="p-5 flex flex-col items-center text-center gap-3">
+                    <div className="grid h-14 w-14 place-items-center rounded-2xl bg-destructive text-destructive-foreground shadow-glow animate-pulse">
+                      <Siren className="h-7 w-7" />
+                    </div>
+                    <div className="space-y-1">
+                      <h3 className="font-extrabold text-sm leading-tight text-destructive flex items-center justify-center gap-1">
+                        <span>🚨</span> {card.title}
+                      </h3>
+                      <p className="text-xs font-semibold text-foreground/90 line-clamp-2 leading-relaxed">
+                        "{phraseText || "I need help"}"
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            }
 
             return (
               <Card

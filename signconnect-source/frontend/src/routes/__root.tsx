@@ -32,7 +32,6 @@ const NAV = [
   { to: "/text-to-sign", label: "Text to Sign", icon: Type },
   { to: "/communication-board", label: "TouchSpeak Board", icon: LayoutGrid },
   { to: "/caregiver", label: "Caregiver", icon: Users },
-  { to: "/emergency", label: "Emergency SOS", icon: Siren },
   { to: "/profile", label: "Profile", icon: User },
   { to: "/settings", label: "Settings", icon: SettingsIcon },
 ] as const;
@@ -176,14 +175,14 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       <div className="mt-auto rounded-2xl glass p-4">
         <div className="text-xs font-semibold text-primary">Need help?</div>
         <p className="mt-1 text-xs text-muted-foreground">
-          Tap the SOS button for immediate assistance with your live location.
+          Use Emergency Help on the TouchSpeak Board for immediate assistance.
         </p>
         <Link
-          to="/emergency"
+          to="/communication-board"
           onClick={onNavigate}
           className="mt-3 inline-flex w-full items-center justify-center rounded-lg bg-destructive px-3 py-2 text-xs font-semibold text-destructive-foreground"
         >
-          Emergency SOS
+          TouchSpeak Board
         </Link>
       </div>
     </aside>

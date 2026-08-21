@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Hand, Type, Siren, ArrowRight, Sparkles, Globe, Shield } from "lucide-react";
+import { Hand, Type, LayoutGrid, ArrowRight, Sparkles, Globe, Shield } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 
 export const Route = createFileRoute("/")({
@@ -10,7 +10,7 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Real-time sign-to-text, text-to-sign avatar, and emergency SOS built for the deaf and mute community.",
+          "Real-time sign-to-text, text-to-sign avatar, and TouchSpeak AAC board built for the deaf and mute community.",
       },
     ],
   }),
@@ -32,19 +32,35 @@ const FEATURES = [
     color: "from-sky-500 to-blue-600",
   },
   {
-    to: "/emergency",
-    icon: Siren,
-    title: "Emergency SOS",
-    desc: "One tap to share live location, alert contacts and call for help.",
-    color: "from-rose-500 to-red-600",
+    to: "/communication-board",
+    icon: LayoutGrid,
+    title: "TouchSpeak Board",
+    desc: "AAC communication board with multi-language TTS, smart phrase predictions and 🚨 Emergency Help.",
+    color: "from-purple-500 to-indigo-600",
   },
 ] as const;
 
-const STATS = [
-  { label: "Sign gestures", value: "1,200+" },
-  { label: "Languages", value: "12" },
-  { label: "Avg. accuracy", value: "96%" },
-  { label: "Response time", value: "<200ms" },
+const CAPABILITIES = [
+  {
+    
+    title: "Sign Recognition",
+    desc: "Recognize hand gestures and convert them into text.",
+  },
+  {
+    
+    title: "Speech Output",
+    desc: "Convert communication into clear spoken audio.",
+  },
+  {
+    
+    title: "TouchSpeak Board",
+    desc: "Use customizable communication cards for everyday needs.",
+  },
+  {
+    
+    title: "Caregiver Support",
+    desc: "Help users communicate important needs to their caregivers.",
+  },
 ];
 
 function Home() {
@@ -79,14 +95,15 @@ function Home() {
             </Link>
           </div>
         </div>
-        <div className="relative mt-8 grid grid-cols-2 gap-3 sm:mt-10 sm:grid-cols-4">
-          {STATS.map((s) => (
+        <div className="relative mt-8 grid grid-cols-1 gap-3 sm:mt-10 sm:grid-cols-2 lg:grid-cols-4">
+          {CAPABILITIES.map((c) => (
             <div
-              key={s.label}
-              className="rounded-2xl bg-white/10 p-4 backdrop-blur"
+              key={c.title}
+              className="rounded-2xl bg-white/10 p-4 backdrop-blur flex flex-col gap-1"
             >
-              <div className="text-2xl font-bold">{s.value}</div>
-              <div className="text-xs text-white/80">{s.label}</div>
+              <div className="text-2xl">{c.icon}</div>
+              <div className="text-sm font-bold text-white">{c.title}</div>
+              <div className="text-xs text-white/80 leading-relaxed">{c.desc}</div>
             </div>
           ))}
         </div>
@@ -124,7 +141,7 @@ function Home() {
       <section className="grid gap-4 sm:grid-cols-3">
         {[
           { icon: Shield, title: "Privacy first", desc: "Camera stream is processed on-device whenever possible." },
-          { icon: Globe, title: "Multi-language", desc: "Supports ASL, BSL, ISL and more sign systems." },
+          { icon: Globe, title: "Multi-language", desc: "Supports ASL, ISL sign systems." },
           { icon: Sparkles, title: "Beautifully accessible", desc: "Large targets, high contrast and screen-reader friendly." },
         ].map((f) => (
           <div key={f.title} className="rounded-2xl glass p-6">
