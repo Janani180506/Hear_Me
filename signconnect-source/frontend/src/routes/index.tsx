@@ -42,26 +42,26 @@ const FEATURES = [
 
 const CAPABILITIES = [
   {
-    
+    icon: "🤟",
     title: "Sign Recognition",
     desc: "Recognize hand gestures and convert them into text.",
   },
   {
-    
+    icon: "🔊",
     title: "Speech Output",
     desc: "Convert communication into clear spoken audio.",
   },
   {
-    
+    icon: "💬",
     title: "TouchSpeak Board",
     desc: "Use customizable communication cards for everyday needs.",
   },
   {
-    
-    title: "Caregiver Support",
-    desc: "Help users communicate important needs to their caregivers.",
+    icon: "🚨",
+    title: "Emergency Caregiver Alert",
+    desc: "Send instant emergency location alerts to registered caregivers.",
   },
-];
+] as const;
 
 function Home() {
   return (

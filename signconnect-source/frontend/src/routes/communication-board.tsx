@@ -100,6 +100,12 @@ function CommunicationBoardPage() {
 
   useEffect(() => {
     fetchBoardData();
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.getVoices();
+      window.speechSynthesis.onvoiceschanged = () => {
+        window.speechSynthesis.getVoices();
+      };
+    }
   }, []);
 
   const fetchBoardData = async () => {
@@ -207,7 +213,7 @@ function CommunicationBoardPage() {
         translations: {
           en: "I am feeling happy.",
           ta: "நான் மகிழ்ச்சியாக உணர்கிறேன்.",
-          hi: "मैं खुश महसूस कर रहा हूँ।",
+          hi: "நான் खुश महसूस कर रहा हूँ।",
         },
       },
       {
@@ -220,7 +226,7 @@ function CommunicationBoardPage() {
         translations: {
           en: "I am feeling sad.",
           ta: "நான் வருத்தமாக இருக்கிறேன்.",
-          hi: "நான் उदास महसूस कर रहा हूँ।",
+          hi: "मैं उदास महसूस कर रहा हूँ।",
         },
       },
       {
@@ -291,35 +297,110 @@ function CommunicationBoardPage() {
     ]);
   };
 
-  const getPhraseForCard = (card: CommunicationCard): string => {
-    if (card.id === "card_emergency_help" || card.title === "Emergency Help") {
-      if (selectedLanguage === "ta") return "எனக்கு உதவி வேண்டும்";
-      if (selectedLanguage === "hi") return "मुझे मदद चाहिए";
+  const getPhraseForCard = (card: CommunicationCard, lang: "en" | "ta" | "hi" = selectedLanguage): string => {
+    if (!card) return "";
+
+    if (card.id === "card_emergency_help" || card.title === "Emergency Help" || (card as any).is_emergency) {
+      if (lang === "ta") return "எனக்கு உதவி வேண்டும்";
+      if (lang === "hi") return "मुझे मदद चाहिए";
       return "I need help";
     }
 
-    const t = card.translations || (card as any).phrases;
-    if (t && t[selectedLanguage] && String(t[selectedLanguage]).trim()) {
-      return String(t[selectedLanguage]).trim();
+    const t = card.translations || (card as any).phrases || {};
+    if (t) {
+      if (lang === "ta" && t.ta && String(t.ta).trim()) return String(t.ta).trim();
+      if (lang === "hi" && t.hi && String(t.hi).trim()) return String(t.hi).trim();
+      if (lang === "en" && t.en && String(t.en).trim()) return String(t.en).trim();
     }
-    if (selectedLanguage === "en") {
-      return card.phrase || card.spoken_phrase || "";
+
+    if (lang === "ta") {
+      const taVal = (card as any).phrase_ta || (card as any).phraseTa || (card as any).tamil_phrase || (card as any).tamilPhrase;
+      if (taVal && String(taVal).trim()) return String(taVal).trim();
     }
-    return "";
+
+    if (lang === "hi") {
+      const hiVal = (card as any).phrase_hi || (card as any).phraseHi || (card as any).hindi_phrase || (card as any).hindiPhrase;
+      if (hiVal && String(hiVal).trim()) return String(hiVal).trim();
+    }
+
+    if (lang === "en") {
+      const enVal = (card as any).phrase_en || (card as any).phraseEn || card.phrase || card.spoken_phrase;
+      if (enVal && String(enVal).trim()) return String(enVal).trim();
+    }
+
+    return card.phrase || card.spoken_phrase || "";
+  };
+
+  const speakPhrase = (textToSpeak: string, lang: "en" | "ta" | "hi") => {
+    if (!textToSpeak || !textToSpeak.trim()) return;
+
+    const langMap: Record<"en" | "ta" | "hi", string> = {
+      en: "en-US",
+      ta: "ta-IN",
+      hi: "hi-IN",
+    };
+
+    const speechLang = langMap[lang] || "en-US";
+
+    console.log("CARD CLICK");
+    console.log("Selected language:", lang);
+    console.log("Phrase to speak:", textToSpeak);
+    console.log("Speech language:", speechLang);
+
+    // 1. Immediate Web Speech API call (Synchronous inside click event flow)
+    let webSpeechSpoken = false;
+    if ("speechSynthesis" in window) {
+      try {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(textToSpeak);
+        utterance.lang = speechLang;
+
+        const voices = window.speechSynthesis.getVoices();
+        if (voices && voices.length > 0) {
+          const targetPrefix = lang === "ta" ? "ta" : lang === "hi" ? "hi" : "en";
+          const matchingVoice = voices.find((v) => {
+            const voiceLang = (v.lang || "").toLowerCase().replace("_", "-");
+            return voiceLang.startsWith(targetPrefix) || voiceLang.includes(`-${targetPrefix}`);
+          });
+
+          if (matchingVoice) {
+            utterance.voice = matchingVoice;
+            webSpeechSpoken = true;
+          }
+        }
+
+        window.speechSynthesis.speak(utterance);
+      } catch (err) {
+        console.error("[Web Speech Error]", err);
+      }
+    }
+
+    // 2. Immediate backend gTTS Audio Fallback for Tamil/Hindi to guarantee 100% clear audio on systems without local voice packs
+    if (lang === "ta" || lang === "hi" || !webSpeechSpoken) {
+      fetch("http://localhost:8000/api/tts/speak", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: textToSpeak, language: lang }),
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data && data.audio_base64) {
+            if ("speechSynthesis" in window) {
+              window.speechSynthesis.cancel();
+            }
+            const audio = new Audio(`data:${data.mime_type || "audio/mp3"};base64,${data.audio_base64}`);
+            audio.play().catch((e) => console.warn("[Audio Play Error]", e));
+          }
+        })
+        .catch((err) => console.warn("[Backend TTS Fetch Error]", err));
+    }
   };
 
   const handleEmergencyClick = async (card: CommunicationCard) => {
-    const spokenText = getPhraseForCard(card) || "I need help";
+    const spokenText = getPhraseForCard(card, selectedLanguage) || "I need help";
 
-    // 1. Speak "I need help" locally on user's device via local TTS (SpeechSynthesis API)
-    if ("speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(spokenText);
-      if (selectedLanguage === "ta") utterance.lang = "ta-IN";
-      else if (selectedLanguage === "hi") utterance.lang = "hi-IN";
-      else utterance.lang = "en-US";
-      window.speechSynthesis.speak(utterance);
-    }
+    // 1. Speak "I need help" locally on user's device via TTS immediately
+    speakPhrase(spokenText, selectedLanguage);
 
     toast.info("Sending emergency alert to caregiver...");
 
@@ -367,7 +448,6 @@ function CommunicationBoardPage() {
       if (res.ok && data.status === "success") {
         toast.success("✓ Emergency alert sent to caregiver");
       } else {
-        // Fallback: If Meta Cloud API credentials not configured in backend .env or delivery failed, open wa.me link directly for registered caregiver
         const caregivers = data.caregivers || [];
         if (caregivers.length > 0) {
           const primary = caregivers.find((c: any) => c.is_primary) || caregivers[0];
@@ -412,28 +492,22 @@ function CommunicationBoardPage() {
       return;
     }
 
-    const phraseText = getPhraseForCard(card);
+    const phraseToSpeak = getPhraseForCard(card, selectedLanguage);
 
-    if (!phraseText) {
-      const langName = selectedLanguage === "ta" ? "Tamil" : "Hindi";
+    if (!phraseToSpeak) {
+      const langName = selectedLanguage === "ta" ? "Tamil" : selectedLanguage === "hi" ? "Hindi" : "English";
       toast.warning(`${langName} phrase not available for "${card.title}"`, {
         description: `Add a ${langName} translation in the Caregiver Dashboard.`,
       });
       return;
     }
 
-    setSentence((prev) => [...prev, phraseText]);
+    // 1. Add exact phrase to sentence builder
+    setSentence((prev) => [...prev, phraseToSpeak]);
     toast.success(`Added "${card.title}" (${selectedLanguage.toUpperCase()}) to sentence builder`);
 
-    // Speak phrase locally on user's device via local TTS (SpeechSynthesis API)
-    if ("speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(phraseText);
-      if (selectedLanguage === "ta") utterance.lang = "ta-IN";
-      else if (selectedLanguage === "hi") utterance.lang = "hi-IN";
-      else utterance.lang = "en-US";
-      window.speechSynthesis.speak(utterance);
-    }
+    // 2. Speak exact phrase immediately using TTS
+    speakPhrase(phraseToSpeak, selectedLanguage);
 
     // Record click for AI phrase predictor
     fetch("http://localhost:8000/api/communication/card-click", {
@@ -477,14 +551,9 @@ function CommunicationBoardPage() {
     }
 
     if ("speechSynthesis" in window) {
-      const utterance = new SpeechSynthesisUtterance(fullText);
-      if (selectedLanguage === "ta") utterance.lang = "ta-IN";
-      else if (selectedLanguage === "hi") utterance.lang = "hi-IN";
-      else utterance.lang = "en-US";
-
-      window.speechSynthesis.speak(utterance);
-      utterance.onend = () => setIsSpeaking(false);
-      toast.success("Speaking via Web Speech...");
+      speakPhrase(fullText, selectedLanguage);
+      setIsSpeaking(false);
+      toast.success("Speaking sentence...");
     } else {
       setIsSpeaking(false);
       toast.error("Text-to-speech unavailable.");
