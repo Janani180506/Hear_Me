@@ -144,8 +144,8 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
             <Hand className="h-5 w-5 text-primary-foreground" />
           </div>
           <div className="min-w-0">
-            <div className="font-display text-lg font-bold leading-none">SignConnect</div>
-            <div className="text-xs text-muted-foreground">AI for everyone</div>
+            <div className="font-display text-lg font-bold leading-none">HearMe</div>
+            <div className="text-xs text-muted-foreground">Communication Platform</div>
           </div>
         </Link>
         <ThemeToggle />

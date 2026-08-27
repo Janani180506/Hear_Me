@@ -14,6 +14,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
+import { API_BASE } from "@/lib/api-config";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -106,7 +107,7 @@ function Profile() {
 
   const fetchCaregivers = async () => {
     try {
-      const res = await fetch("http://localhost:8000/api/caregivers");
+      const res = await fetch("https://hearme-2-uvm0.onrender.com/api/caregivers");
       if (res.ok) {
         const data = await res.json();
         setCaregivers(Array.isArray(data) ? data : []);
@@ -193,7 +194,7 @@ function Profile() {
   // Remove Caregiver Handler
   const handleRemoveCaregiver = async (id: string, name: string) => {
     try {
-      const res = await fetch(`http://localhost:8000/api/caregivers/${id}`, {
+      const res = await fetch(`${API_BASE}/api/caregivers/${id}`, {
         method: "DELETE",
       });
       if (res.ok) {
@@ -236,7 +237,7 @@ function Profile() {
         is_primary: editingCaregiver.is_primary ?? false,
       };
 
-      const res = await fetch("http://localhost:8000/api/caregivers", {
+      const res = await fetch(`${API_BASE}/api/caregivers`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updatedPayload),

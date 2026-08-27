@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { API_BASE } from "@/lib/api-config";
 
 export const Route = createFileRoute("/communication-board")({
   component: CommunicationBoardPage,
@@ -110,7 +111,7 @@ function CommunicationBoardPage() {
 
   const fetchBoardData = async () => {
     try {
-      const res = await fetch("http://localhost:8000/api/communication/board/user_default");
+      const res = await fetch(`${API_BASE}/api/communication/board/user_default`);
       if (res.ok) {
         const data = await res.json();
         setCards(data.cards || []);
@@ -377,7 +378,7 @@ function CommunicationBoardPage() {
 
     // 2. Immediate backend gTTS Audio Fallback for Tamil/Hindi to guarantee 100% clear audio on systems without local voice packs
     if (lang === "ta" || lang === "hi" || !webSpeechSpoken) {
-      fetch("http://localhost:8000/api/tts/speak", {
+      fetch(`${API_BASE}/api/tts/speak`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: textToSpeak, language: lang }),
@@ -426,7 +427,7 @@ function CommunicationBoardPage() {
 
     // 3. Send POST request to backend WhatsApp emergency endpoint
     try {
-      const res = await fetch("http://localhost:8000/api/emergency/touchspeak", {
+      const res = await fetch(`${API_BASE}/api/emergency/touchspeak`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -470,7 +471,7 @@ function CommunicationBoardPage() {
     }
 
     // 4. Record click for AI phrase predictor
-    fetch("http://localhost:8000/api/communication/card-click", {
+    fetch(`${API_BASE}/api/communication/card-click`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -510,7 +511,7 @@ function CommunicationBoardPage() {
     speakPhrase(phraseToSpeak, selectedLanguage);
 
     // Record click for AI phrase predictor
-    fetch("http://localhost:8000/api/communication/card-click", {
+    fetch(`${API_BASE}/api/communication/card-click`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -530,7 +531,7 @@ function CommunicationBoardPage() {
 
     setIsSpeaking(true);
     try {
-      const res = await fetch("http://localhost:8000/api/tts/speak", {
+      const res = await fetch(`${API_BASE}/api/tts/speak`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: fullText, language: selectedLanguage }),

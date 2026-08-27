@@ -275,11 +275,17 @@ class TouchSpeakService:
     def __init__(self, mongo_uri: Optional[str] = None):
         self.mongo_uri = mongo_uri or os.getenv("MONGO_URI", "mongodb://localhost:27017/touchspeak")
         self.db = None
+        self._db_initialized = False
         self.in_memory_cards = list(DEFAULT_CARDS)
         self.in_memory_categories = list(DEFAULT_CATEGORIES)
         self.in_memory_caregivers = list(DEFAULT_CAREGIVERS)
         self.in_memory_history: List[Dict[str, Any]] = []
         self.in_memory_sos_logs: List[Dict[str, Any]] = []
+
+    def _ensure_db(self):
+        if self._db_initialized:
+            return
+        self._db_initialized = True
         self._init_db()
 
     def _init_db(self):
@@ -313,6 +319,7 @@ class TouchSpeakService:
             print(f"[TouchSpeak Service] MongoDB seed error: {e}")
 
     def get_categories(self) -> List[Dict[str, Any]]:
+        self._ensure_db()
         if self.db is not None:
             try:
                 cats = list(self.db.categories.find({}, {"_id": 0}).sort("display_order", 1))
@@ -323,6 +330,7 @@ class TouchSpeakService:
         return self.in_memory_categories
 
     def get_cards(self, category_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        self._ensure_db()
         cards = []
         if self.db is not None:
             try:
@@ -375,6 +383,7 @@ class TouchSpeakService:
         return cards
 
     def add_card(self, card_data: Dict[str, Any]) -> Dict[str, Any]:
+        self._ensure_db()
         raw_cat = card_data.get("category") or card_data.get("category_id") or "Needs"
         norm_cat = normalize_category(raw_cat)
 
@@ -422,6 +431,7 @@ class TouchSpeakService:
         return card_copy
 
     def delete_card(self, card_id: str) -> bool:
+        self._ensure_db()
         if self.db is not None:
             try:
                 self.db.cards.delete_one({"id": card_id})
@@ -432,6 +442,7 @@ class TouchSpeakService:
         return True
 
     def record_card_click(self, user_id: str, card_id: str, phrase: str) -> None:
+        self._ensure_db()
         log_entry = {
             "user_id": user_id,
             "card_id": card_id,
@@ -446,6 +457,7 @@ class TouchSpeakService:
         self.in_memory_history.append(log_entry)
 
     def predict_next_phrases(self, user_id: str, top_n: int = 3) -> List[Dict[str, Any]]:
+        self._ensure_db()
         user_history = [h for h in self.in_memory_history if h.get("user_id") == user_id]
         if self.db is not None:
             try:
@@ -494,6 +506,7 @@ class TouchSpeakService:
         return predictions
 
     def get_caregivers(self) -> List[Dict[str, Any]]:
+        self._ensure_db()
         if self.db is not None:
             try:
                 cgs = list(self.db.caregivers.find({}, {"_id": 0}))
@@ -504,6 +517,7 @@ class TouchSpeakService:
         return self.in_memory_caregivers
 
     def add_caregiver(self, caregiver_data: Dict[str, Any]) -> Dict[str, Any]:
+        self._ensure_db()
         cg_id = caregiver_data.get("id") or f"cg_{int(time.time()*1000)}"
         caregiver = {
             "id": cg_id,
@@ -526,6 +540,7 @@ class TouchSpeakService:
         return cg_copy
 
     def delete_caregiver(self, caregiver_id: str) -> bool:
+        self._ensure_db()
         if self.db is not None:
             try:
                 self.db.caregivers.delete_one({"id": caregiver_id})
@@ -544,6 +559,7 @@ class TouchSpeakService:
         caregiver_phone: Optional[str] = None,
         status: Optional[str] = "Active"
     ) -> Dict[str, Any]:
+        self._ensure_db()
         lat = location.get("latitude", 0.0) if location else 0.0
         lng = location.get("longitude", 0.0) if location else 0.0
         maps_link = f"https://www.google.com/maps?q={lat},{lng}"
@@ -573,6 +589,7 @@ class TouchSpeakService:
         return sos_copy
 
     def get_sos_logs(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        self._ensure_db()
         logs = []
         if self.db is not None:
             try:

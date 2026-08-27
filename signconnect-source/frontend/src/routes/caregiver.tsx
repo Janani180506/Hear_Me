@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { API_BASE } from "@/lib/api-config";
 
 export const Route = createFileRoute("/caregiver")({
   component: CaregiverPage,
@@ -41,8 +42,8 @@ function CaregiverPage() {
   const fetchCaregiverData = async () => {
     try {
       const [cardsRes, cgRes] = await Promise.all([
-        fetch("http://localhost:8000/api/communication/cards"),
-        fetch("http://localhost:8000/api/caregivers"),
+        fetch(`${API_BASE}/api/communication/cards`),
+        fetch(`${API_BASE}/api/caregivers`),
       ]);
 
       if (cardsRes.ok) setCards(await cardsRes.json());
@@ -60,7 +61,7 @@ function CaregiverPage() {
     }
 
     try {
-      const res = await fetch("http://localhost:8000/api/communication/cards", {
+      const res = await fetch(`${API_BASE}/api/communication/cards`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -100,7 +101,7 @@ function CaregiverPage() {
 
   const handleDeleteCard = async (cardId: string) => {
     try {
-      const res = await fetch(`http://localhost:8000/api/communication/cards/${cardId}`, {
+      const res = await fetch(`${API_BASE}/api/communication/cards/${cardId}`, {
         method: "DELETE",
       });
       if (res.ok) {
@@ -120,7 +121,7 @@ function CaregiverPage() {
     }
 
     try {
-      const res = await fetch("http://localhost:8000/api/caregivers", {
+      const res = await fetch(`${API_BASE}/api/caregivers`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -146,7 +147,7 @@ function CaregiverPage() {
 
   const handleDeleteCaregiver = async (id: string) => {
     try {
-      const res = await fetch(`http://localhost:8000/api/caregivers/${id}`, {
+      const res = await fetch(`${API_BASE}/api/caregivers/${id}`, {
         method: "DELETE",
       });
       if (res.ok) {

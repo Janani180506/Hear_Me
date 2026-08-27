@@ -6,9 +6,15 @@ import math
 import os
 import tempfile
 import time
-from datetime import datetime
+import threading
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+# Set TensorFlow CPU thread limits before importing TF to keep memory & overhead minimal
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
 
 import cv2
 import numpy as np
@@ -16,7 +22,6 @@ from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSock
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-from tensorflow.keras.models import load_model
 
 try:
     from .isl_translator import ISLTranslator
@@ -26,11 +31,6 @@ except ImportError:
     from isl_translator import ISLTranslator
     from touchspeak_service import touchspeak_service
     from whatsapp_service import whatsapp_service
-
-try:
-    from cvzone.HandTrackingModule import HandDetector
-except ImportError as exc:
-    raise RuntimeError(f"Missing dependency for hand detection: {exc}") from exc
 
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -59,26 +59,69 @@ GROUP_LABELS = [
 
 class GestureModelService:
     def __init__(self) -> None:
-        print(f"[Gesture Service] Loading Alphabet Model from {MODEL_PATH}...")
-        self.model = load_model(str(MODEL_PATH))
-        self.detector = HandDetector(maxHands=1, detectionCon=0.1)
-        self.detector2 = HandDetector(maxHands=1, detectionCon=0.1)
-        
+        self._loaded = False
+        self._lock = threading.Lock()
+        self.model = None
+        self.detector = None
         self.word_model = None
         self.word_label_map = {}
-        if WORD_MODEL_PATH.exists():
+        self._word_model_loaded = False
+
+    def ensure_loaded(self) -> None:
+        if self._loaded:
+            return
+        with self._lock:
+            if self._loaded:
+                return
+            print(f"[Gesture Service] Loading Alphabet Model from {MODEL_PATH}...")
+            import tensorflow as tf
             try:
-                print(f"[Gesture Service] Loading Word-Level Model from {WORD_MODEL_PATH}...")
-                self.word_model = load_model(str(WORD_MODEL_PATH))
-                label_map_path = WORD_MODEL_PATH.parent / "label_map.json"
-                if label_map_path.exists():
-                    with open(label_map_path, "r", encoding="utf-8") as f:
-                        self.word_label_map = json.load(f)
-                print("[Gesture Service] Word-Level Model loaded successfully.")
+                tf.config.threading.set_inter_op_parallelism_threads(1)
+                tf.config.threading.set_intra_op_parallelism_threads(1)
+            except Exception:
+                pass
+
+            from tensorflow.keras.models import load_model
+            from cvzone.HandTrackingModule import HandDetector
+
+            self.model = load_model(str(MODEL_PATH), compile=False)
+            self.detector = HandDetector(maxHands=1, detectionCon=0.1)
+            print("[Gesture Service] Alphabet Model & HandDetector loaded successfully.")
+
+            # Warm up TensorFlow model so the first prediction is faster
+            try:
+                dummy_input = np.ones((1, 400, 400, 3), dtype=np.uint8) * 255
+                _ = self.model(dummy_input, training=False)
+                print("[Gesture Service] Alphabet model warm-up completed.")
             except Exception as e:
-                print(f"[Gesture Service] Could not load Word-Level Model: {e}")
-        else:
-            print(f"[Gesture Service] Whole-Word Model not found at {WORD_MODEL_PATH}. Video recognition mode will report 'model_not_configured'.")
+                print(f"[Gesture Service] Model warm-up warning: {e}")
+
+            # Note: Word model is lazily loaded on demand via ensure_word_model_loaded()
+            # to stay comfortably under Render's 512MB RAM limit.
+
+            self._loaded = True
+
+    def ensure_word_model_loaded(self) -> None:
+        if self._word_model_loaded:
+            return
+        with self._lock:
+            if self._word_model_loaded:
+                return
+            if WORD_MODEL_PATH.exists():
+                try:
+                    print(f"[Gesture Service] Lazily loading Word-Level Model from {WORD_MODEL_PATH}...")
+                    from tensorflow.keras.models import load_model
+                    self.word_model = load_model(str(WORD_MODEL_PATH))
+                    label_map_path = WORD_MODEL_PATH.parent / "label_map.json"
+                    if label_map_path.exists():
+                        with open(label_map_path, "r", encoding="utf-8") as f:
+                            self.word_label_map = json.load(f)
+                    print("[Gesture Service] Word-Level Model loaded successfully.")
+                except Exception as e:
+                    print(f"[Gesture Service] Could not load Word-Level Model: {e}")
+            else:
+                print(f"[Gesture Service] Whole-Word Model not found at {WORD_MODEL_PATH}.")
+            self._word_model_loaded = True
 
     @staticmethod
     def _first_hand(hands: object) -> dict[str, object] | None:
@@ -102,21 +145,30 @@ class GestureModelService:
         ch1: Any = class_index
         pl = [ch1, ch2]
 
+        if len(pts) < 21:
+            return str(ch1)
+
         # Condition for [A, E, M, N, S, T]
         l1 = [[5, 2], [5, 3], [3, 5], [3, 6], [3, 0], [3, 2], [6, 4], [6, 1], [6, 2], [6, 6], [6, 7], [6, 0], [6, 5],
               [4, 1], [1, 0], [1, 1], [6, 3], [1, 6], [5, 6], [5, 1], [4, 5], [1, 4], [1, 5], [2, 0], [2, 6], [4, 6],
               [1, 0], [5, 7], [1, 6], [6, 1], [7, 6], [2, 5], [7, 1], [5, 4], [7, 0], [7, 5], [7, 2]]
-        if pl in l1 and len(pts) >= 21:
+        if pl in l1:
             if pts[6][1] < pts[8][1] and pts[10][1] < pts[12][1] and pts[14][1] < pts[16][1] and pts[18][1] < pts[20][1]:
                 ch1 = 0
 
         # Condition for [O, S]
-        if pl in [[2, 2], [2, 1]] and len(pts) >= 21:
+        if pl in [[2, 2], [2, 1]]:
             if pts[5][0] < pts[4][0]:
                 ch1 = 0
 
+        # Condition for Group 1 fallback
+        l_g1 = [[5, 0], [5, 1], [5, 4], [5, 5], [5, 6], [6, 1], [7, 6], [0, 2], [7, 1], [7, 4], [6, 6], [7, 2], [6, 3], [6, 4], [7, 5]]
+        if pl in l_g1:
+            if pts[6][1] > pts[8][1] and pts[10][1] > pts[12][1] and pts[14][1] > pts[16][1] and pts[18][1] > pts[20][1]:
+                ch1 = 1
+
         # Subgroup mapping for group 0
-        if ch1 == 0 and len(pts) >= 21:
+        if ch1 == 0:
             ch1 = 'S'
             if pts[4][0] < pts[6][0] and pts[4][0] < pts[10][0] and pts[4][0] < pts[14][0] and pts[4][0] < pts[18][0]:
                 ch1 = 'A'
@@ -130,21 +182,21 @@ class GestureModelService:
                 ch1 = 'N'
 
         # Subgroup mapping for group 2 [C, O]
-        elif ch1 == 2 and len(pts) >= 21:
+        elif ch1 == 2:
             if self.distance(pts[12], pts[4]) > 42:
                 ch1 = 'C'
             else:
                 ch1 = 'O'
 
         # Subgroup mapping for group 3 [G, H]
-        elif ch1 == 3 and len(pts) >= 21:
+        elif ch1 == 3:
             if self.distance(pts[8], pts[12]) > 72:
                 ch1 = 'G'
             else:
                 ch1 = 'H'
 
         # Subgroup mapping for group 7 [Y, J]
-        elif ch1 == 7 and len(pts) >= 21:
+        elif ch1 == 7:
             if self.distance(pts[8], pts[4]) > 42:
                 ch1 = 'Y'
             else:
@@ -159,7 +211,7 @@ class GestureModelService:
             ch1 = 'X'
 
         # Subgroup mapping for group 5 [P, Q, Z]
-        elif ch1 == 5 and len(pts) >= 21:
+        elif ch1 == 5:
             if pts[4][0] > pts[12][0] and pts[4][0] > pts[16][0] and pts[4][0] > pts[20][0]:
                 if pts[8][1] < pts[5][1]:
                     ch1 = 'Z'
@@ -169,7 +221,7 @@ class GestureModelService:
                 ch1 = 'P'
 
         # Subgroup mapping for group 1 [B, D, F, I, W, K, U, V, R]
-        elif ch1 == 1 and len(pts) >= 21:
+        elif ch1 == 1:
             if pts[6][1] > pts[8][1] and pts[10][1] > pts[12][1] and pts[14][1] > pts[16][1] and pts[18][1] > pts[20][1]:
                 ch1 = 'B'
             elif pts[6][1] > pts[8][1] and pts[10][1] < pts[12][1] and pts[14][1] < pts[16][1] and pts[18][1] < pts[20][1]:
@@ -192,17 +244,36 @@ class GestureModelService:
         return str(ch1)
 
     def predict_image(self, image: np.ndarray) -> dict[str, Any]:
+        t_start = time.perf_counter()
         image_flipped = cv2.flip(image, 1)
-        hands = self._first_hand(self.detector.findHands(image_flipped, draw=False, flipType=True))
+        t_decode_flip = time.perf_counter()
+
+        hands_raw = self.detector.findHands(image_flipped, draw=False, flipType=True)
+        hands = self._first_hand(hands_raw)
         if not hands:
             return {"ok": False, "error": "No hand detected in image. Please provide a clear view of a hand."}
 
         x, y, width, height = hands["bbox"]
         offset = 29
-        x1 = max(x - offset, 0)
         y1 = max(y - offset, 0)
+        y2 = min(y + height + offset, image_flipped.shape[0])
+        x1 = max(x - offset, 0)
+        x2 = min(x + width + offset, image_flipped.shape[1])
 
-        pts = [[pt[0] - x1, pt[1] - y1] for pt in hands["lmList"]]
+        crop = image_flipped[y1:y2, x1:x2]
+        pts = None
+        if crop.size > 0:
+            handz_raw = self.detector.findHands(crop, draw=False, flipType=True)
+            handz = self._first_hand(handz_raw)
+            if handz and "lmList" in handz and isinstance(handz["lmList"], list) and len(handz["lmList"]) >= 21:
+                pts = handz["lmList"]
+
+        if pts is None:
+            raw_pts = hands.get("lmList", [])
+            pts = [[pt[0] - x1, pt[1] - y1] for pt in raw_pts]
+
+        t_hand = time.perf_counter()
+
         canvas = np.ones((400, 400, 3), np.uint8) * 255
         offset_x = ((400 - width) // 2) - 15
         offset_y = ((400 - height) // 2) - 15
@@ -228,36 +299,101 @@ class GestureModelService:
         for pt in pts:
             cv2.circle(canvas, (pt[0] + offset_x, pt[1] + offset_y), 2, (0, 0, 255), 1)
 
-        prediction = np.array(self.model.predict(canvas.reshape(1, 400, 400, 3), verbose=0)[0], dtype="float32")
+        canvas_batch = canvas.reshape(1, 400, 400, 3)
+        preds_raw = self.model(canvas_batch, training=False).numpy()[0]
+        prediction = np.array(preds_raw, dtype="float32")
         class_index = int(np.argmax(prediction))
-        confidence = float(prediction[class_index])
+        group_confidence = float(prediction[class_index])
         prediction[class_index] = 0
         ch2 = int(np.argmax(prediction))
+        t_cnn = time.perf_counter()
 
         letter = self.classify_gesture_letter(class_index, ch2, pts)
+        t_class = time.perf_counter()
+
+        total_ms = (t_class - t_start) * 1000
+        hand_ms = (t_hand - t_decode_flip) * 1000
+        cnn_ms = (t_cnn - t_hand) * 1000
+        class_ms = (t_class - t_cnn) * 1000
+
+        print(f"[PREDICT] request received")
+        print(f"[PREDICT] image decoded")
+        print(f"[PREDICT] hand detection: {hand_ms:.1f} ms")
+        print(f"[PREDICT] CNN inference: {cnn_ms:.1f} ms")
+        print(f"[PREDICT] classification: {class_ms:.1f} ms")
+        print(f"[PREDICT] total: {total_ms:.1f} ms")
+        print(f"[PREDICT] result: {letter} confidence={group_confidence:.4f}")
+
+        if group_confidence < 0.25:
+            return {
+                "ok": False,
+                "status": "low_confidence",
+                "error": "Low gesture confidence. Please adjust your hand position.",
+                "confidence": group_confidence,
+                "group_confidence": group_confidence,
+                "letter": None
+            }
 
         return {
             "ok": True,
             "predicted_class": GROUP_LABELS[class_index] if class_index < len(GROUP_LABELS) else f"Group {class_index}",
             "letter": letter,
-            "confidence": confidence,
+            "confidence": group_confidence,
+            "group_confidence": group_confidence,
             "class_index": class_index,
             "landmarks": pts
         }
 
 
-app = FastAPI(title="SignConnect Unified API & Gesture Engine")
+app = FastAPI(title="HearMe Unified API & Gesture Engine")
+
+ALLOWED_ORIGINS = [
+    "https://hear-me-ochre.vercel.app",
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS + ["*"],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-service: GestureModelService | None = None
-translator_service: ISLTranslator | None = None
+_gesture_service_instance: GestureModelService | None = None
+_gesture_service_lock = threading.Lock()
+
+_translator_service_instance: ISLTranslator | None = None
+_translator_service_lock = threading.Lock()
+
+
+def get_gesture_service() -> GestureModelService:
+    global _gesture_service_instance
+    if _gesture_service_instance is None:
+        with _gesture_service_lock:
+            if _gesture_service_instance is None:
+                instance = GestureModelService()
+                instance.ensure_loaded()
+                _gesture_service_instance = instance
+            else:
+                _gesture_service_instance.ensure_loaded()
+    else:
+        _gesture_service_instance.ensure_loaded()
+    return _gesture_service_instance
+
+
+def get_translator_service() -> ISLTranslator:
+    global _translator_service_instance
+    if _translator_service_instance is None:
+        with _translator_service_lock:
+            if _translator_service_instance is None:
+                _translator_service_instance = ISLTranslator()
+    return _translator_service_instance
 
 
 class TranslateRequest(BaseModel):
@@ -323,10 +459,14 @@ class TTSRequest(BaseModel):
 
 @app.on_event("startup")
 def startup() -> None:
-    global service, translator_service
-    service = GestureModelService()
-    translator_service = ISLTranslator()
-    print("[SignConnect Unified Backend] Service startup complete.")
+    print("[SignConnect] FastAPI application initialized")
+    print("[SignConnect Unified Backend] Loading gesture model during startup...")
+
+    try:
+        get_gesture_service()
+        print("[SignConnect Unified Backend] Gesture model ready.")
+    except Exception as e:
+        print(f"[SignConnect Unified Backend] Gesture model startup warning: {e}")
 
 
 @app.get("/health")
@@ -337,34 +477,43 @@ async def health() -> dict[str, str]:
 # --- GESTURE RECOGNITION REST API ---
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)) -> JSONResponse:
-    if service is None:
-        return JSONResponse(status_code=503, content={"ok": False, "error": "Model service is not ready"})
+    try:
+        svc = get_gesture_service()
+    except Exception as exc:
+        print(f"[PREDICT ERROR] Failed to load gesture model: {exc}")
+        return JSONResponse(status_code=500, content={"ok": False, "error": f"Failed to load gesture model: {exc}"})
 
-    contents = await file.read()
-    if not contents:
-        return JSONResponse(status_code=200, content={"ok": False, "error": "Uploaded file is empty"})
+    try:
+        contents = await file.read()
+        if not contents:
+            return JSONResponse(status_code=200, content={"ok": False, "error": "Uploaded file is empty"})
 
-    np_arr = np.frombuffer(contents, dtype=np.uint8)
-    image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-    if image is None:
-        return JSONResponse(status_code=200, content={"ok": False, "error": "Unable to decode uploaded image"})
+        np_arr = np.frombuffer(contents, dtype=np.uint8)
+        image = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+        if image is None:
+            return JSONResponse(status_code=200, content={"ok": False, "error": "Unable to decode uploaded image"})
 
-    result = service.predict_image(image)
-    # Always return HTTP 200 so hand detection status is passed cleanly without triggering HTTP 400 errors
-    return JSONResponse(status_code=200, content=result)
+        result = svc.predict_image(image)
+        return JSONResponse(status_code=200, content=result)
+    except Exception as exc:
+        print(f"[PREDICT ERROR] Exception during prediction: {exc}")
+        return JSONResponse(status_code=200, content={"ok": False, "error": f"Internal prediction error: {str(exc)}"})
 
 
 # --- VIDEO GESTURE RECOGNITION API (WHOLE-WORD ASL MODEL) ---
 @app.post("/predict-video")
 async def predict_video(file: UploadFile = File(...)) -> JSONResponse:
-    if service is None:
-        raise HTTPException(status_code=503, detail="Model service is not ready")
+    try:
+        svc = get_gesture_service()
+        svc.ensure_word_model_loaded()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to load gesture model: {exc}")
 
     contents = await file.read()
     if not contents:
         raise HTTPException(status_code=400, detail="Uploaded video file is empty")
 
-    if service.word_model is None:
+    if svc.word_model is None:
         return JSONResponse(
             status_code=200,
             content={
@@ -390,7 +539,7 @@ async def predict_video(file: UploadFile = File(...)) -> JSONResponse:
                 break
             frame_count += 1
             # Process frames with HandDetector
-            hands = service._first_hand(service.detector.findHands(frame, draw=False))
+            hands = svc._first_hand(svc.detector.findHands(frame, draw=False))
             if hands and "lmList" in hands:
                 pts = hands["lmList"]
                 # Flatten 21 2D landmarks (42 features) or center relative to wrist
@@ -422,13 +571,13 @@ async def predict_video(file: UploadFile = File(...)) -> JSONResponse:
                 seq_tensor[i] = frames_landmarks[-1]
 
         input_batch = np.expand_dims(seq_tensor, axis=0)
-        prediction = service.word_model.predict(input_batch, verbose=0)[0]
+        prediction = svc.word_model.predict(input_batch, verbose=0)[0]
         class_idx = int(np.argmax(prediction))
         confidence = float(prediction[class_idx])
 
         word_label = str(class_idx)
-        if service.word_label_map and str(class_idx) in service.word_label_map:
-            word_label = service.word_label_map[str(class_idx)]
+        if svc.word_label_map and str(class_idx) in svc.word_label_map:
+            word_label = svc.word_label_map[str(class_idx)]
 
         return JSONResponse(content={
             "ok": True,
@@ -451,6 +600,13 @@ async def websocket_gesture(websocket: WebSocket):
     await websocket.accept()
     print("[WebSocket] Client connected for gesture stream.")
     try:
+        svc = get_gesture_service()
+    except Exception as e:
+        await websocket.send_json({"ok": False, "status": "error", "error": f"Failed to load model: {e}"})
+        await websocket.close()
+        return
+
+    try:
         while True:
             data_str = await websocket.receive_text()
             try:
@@ -466,8 +622,8 @@ async def websocket_gesture(websocket: WebSocket):
                 nparr = np.frombuffer(img_bytes, np.uint8)
                 frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-                if frame is not None and service is not None:
-                    res = service.predict_image(frame)
+                if frame is not None:
+                    res = svc.predict_image(frame)
                     if res.get("ok"):
                         res["status"] = "success"
                         res["current_symbol"] = res["letter"]
@@ -483,11 +639,9 @@ async def websocket_gesture(websocket: WebSocket):
 # --- TEXT TO ISL TRANSLATOR API ---
 @app.post("/translate")
 async def translate(req: TranslateRequest) -> dict[str, Any]:
-    if translator_service is None:
-        raise HTTPException(status_code=503, detail="Translator service is not ready")
-
     try:
-        sequence = translator_service.translate(req.text)
+        trans_svc = get_translator_service()
+        sequence = trans_svc.translate(req.text)
         return {
             "ok": True,
             "original_text": req.text,

@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { API_BASE } from "@/lib/api-config";
 
 const AvatarContainer = React.memo(() => {
   return (
@@ -106,36 +107,37 @@ function TextToSign() {
 
   // Translate text to ISL word sequence
   useEffect(() => {
-    if (!text.trim()) {
+    const trimmed = text.trim();
+    if (!trimmed) {
       setTranslatedSequence([]);
+      setLoading(false);
       return;
     }
+
+    // Immediately fallback to split words so mapped sequence is never empty when text is present
+    const fallbackWords = trimmed.toLowerCase().split(/\s+/).filter(Boolean);
+    setTranslatedSequence(fallbackWords);
 
     const delayDebounceFn = setTimeout(async () => {
       setLoading(true);
       try {
-        const response = await fetch("http://localhost:8000/translate", {
+        const response = await fetch(`${API_BASE}/translate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text }),
+          body: JSON.stringify({ text: trimmed }),
         });
 
         if (response.ok) {
           const data = await response.json();
           if (data.ok && Array.isArray(data.sequence) && data.sequence.length > 0) {
             setTranslatedSequence(data.sequence.map((w: string) => w.toLowerCase()));
-          } else {
-            // Fallback split words
-            setTranslatedSequence(text.trim().toLowerCase().split(/\s+/));
           }
-          setActiveWord(0);
-          stopPlayback();
         }
       } catch (err) {
-        // Fallback split words
-        setTranslatedSequence(text.trim().toLowerCase().split(/\s+/));
+        console.warn("Translation service warning (using word fallback):", err);
       } finally {
         setLoading(false);
+        setActiveWord(0);
       }
     }, 400);
 

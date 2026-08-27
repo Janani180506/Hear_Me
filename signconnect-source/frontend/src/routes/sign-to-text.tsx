@@ -26,6 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
+import { API_BASE } from "@/lib/api-config";
 import { isDuplicatePrediction } from "@/lib/text-utils";
 import { getWordSuggestions } from "@/lib/word-dictionary";
 
@@ -124,11 +125,13 @@ function SignToText() {
         "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.8/wasm"
       );
 
+      const taskPath = typeof window !== "undefined" ? `${window.location.origin}/hand_landmarker.task` : "/hand_landmarker.task";
+
       let tracker: any = null;
       try {
         tracker = await HandLandmarker.createFromOptions(vision, {
           baseOptions: {
-            modelAssetPath: "/hand_landmarker.task",
+            modelAssetPath: taskPath,
             delegate: "GPU",
           },
           runningMode: "VIDEO",
@@ -138,7 +141,7 @@ function SignToText() {
         console.warn("[SignToText] GPU delegate failed, falling back to CPU delegate:", gpuErr);
         tracker = await HandLandmarker.createFromOptions(vision, {
           baseOptions: {
-            modelAssetPath: "/hand_landmarker.task",
+            modelAssetPath: taskPath,
             delegate: "CPU",
           },
           runningMode: "VIDEO",
@@ -334,7 +337,7 @@ function SignToText() {
     const cleanSentence = textToSpeak.trim();
     if (!cleanSentence) return;
 
-    fetch("http://localhost:8000/api/tts/speak", {
+    fetch(`${API_BASE}/api/tts/speak`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text: cleanSentence, language: "en" }),
@@ -417,11 +420,21 @@ function SignToText() {
     setPredictionStatus("loading");
     setPredictionError("");
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+
     try {
-      const response = await fetch("http://localhost:8000/predict", {
+      const response = await fetch(`${API_BASE}/predict`, {
         method: "POST",
         body: formData,
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(`Backend returned HTTP ${response.status} (${response.statusText})`);
+      }
 
       const data = await response.json();
 
@@ -458,7 +471,6 @@ function SignToText() {
         );
 
         if (isDup) {
-          // Debounce continuous rapid frame predictions of the same letter
           return;
         }
 
@@ -485,10 +497,22 @@ function SignToText() {
         toast.success(`Recognized sign letter: '${letter}'`);
       }
     } catch (error: any) {
+      clearTimeout(timeoutId);
       console.error("[SignToText] /predict request exception:", error);
+      let errMsg = "Unable to process current frame.";
+      if (error?.name === "AbortError") {
+        errMsg = "Prediction timed out (server took >12s).";
+      } else if (error?.message) {
+        errMsg = error.message;
+      }
       if (isMountedRef.current) {
         setPredictionStatus("error");
-        setPredictionError(error?.message || "Unable to process current frame.");
+        setPredictionError(errMsg);
+        toast.error(errMsg);
+      }
+    } finally {
+      if (isMountedRef.current) {
+        isPredictingRef.current = false;
       }
     }
   };
@@ -507,17 +531,24 @@ function SignToText() {
 
     try {
       const canvas = document.createElement("canvas");
-      canvas.width = video.videoWidth || 640;
-      canvas.height = video.videoHeight || 480;
+      const targetWidth = Math.min(video.videoWidth || 640, 640);
+      const targetHeight = Math.min(video.videoHeight || 480, 480);
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
       const ctx = canvas.getContext("2d");
-      if (!ctx) return;
+      if (!ctx) {
+        isPredictingRef.current = false;
+        return;
+      }
 
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob((b) => resolve(b), "image/jpeg", 0.85));
+      ctx.drawImage(video, 0, 0, targetWidth, targetHeight);
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob((b) => resolve(b), "image/jpeg", 0.75));
       if (blob && blob.size > 0) {
         await handleAlphabetPrediction(blob, "webcam_frame.jpg");
+      } else {
+        isPredictingRef.current = false;
       }
-    } finally {
+    } catch {
       isPredictingRef.current = false;
     }
   };
